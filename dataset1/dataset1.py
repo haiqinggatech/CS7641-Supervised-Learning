@@ -32,15 +32,14 @@ from sklearn.metrics import confusion_matrix
 cross_validations = 10
 train_sizes_base = [500, 1000, 2500, 5000, 10000, 15000]
 
-
-
-
 def plot_learning_curve(title, cv_curve):
 #     _, _, test_scores_base = base_curve
     train_sizes, train_scores, test_scores = cv_curve
     train_scores_mean = np.mean(train_scores, axis=1)
     train_scores_std = np.std(train_scores, axis=1)
-
+    
+#     test_scores_base_mean = np.mean(test_scores_base, axis=1)
+#     test_scores_base_std = np.std(test_scores_base, axis=1)
     test_scores_mean = np.mean(test_scores, axis=1)
     test_scores_std = np.std(test_scores, axis=1)
     
@@ -48,7 +47,7 @@ def plot_learning_curve(title, cv_curve):
     plt.title(title)
     plt.ylim((.6, 1.01))
     
-
+    plt.ylim((.6, 1.01))
     plt.xlabel("Training examples")
     plt.ylabel("Score")
     
@@ -57,7 +56,9 @@ def plot_learning_curve(title, cv_curve):
     plt.fill_between(train_sizes, train_scores_mean - train_scores_std,
                      train_scores_mean + train_scores_std, alpha=0.1,
                      color="r")
-
+    
+#     plt.fill_between(train_sizes, test_scores_base_mean - test_scores_base_std,
+#                      test_scores_base_mean + test_scores_base_std, alpha=0.1, color="b")
     
     plt.fill_between(train_sizes, test_scores_mean - test_scores_std,
                      test_scores_mean + test_scores_std, alpha=0.1, color="g")
@@ -71,13 +72,9 @@ def plot_learning_curve(title, cv_curve):
              label="Test Score with CV")
 
     plt.legend(loc="best")
-    plt.savefig(title)
-    plt.close()
     return plt
 
-
-
-def crossValidateAndTest(name, clf, params, trainTest, scaler=None):
+def crossValidateAndTest(name, clf, params, trainTest, scaler=None, plot=True):
     X_train, X_test, y_train, y_test = trainTest.copy()
     print('Name: ' + name)
     if not scaler is None:
@@ -88,6 +85,7 @@ def crossValidateAndTest(name, clf, params, trainTest, scaler=None):
 #     base_clf = GridSearchCV(clf, param_grid=params, refit=True, cv=None)
     cv_clf = GridSearchCV(clf, param_grid=params, refit=True, cv=cross_validations)
     
+#     base_clf.fit(X_train, y_train)
     
     start = datetime.now()
     cv_clf.fit(X_train, y_train)
@@ -114,19 +112,71 @@ def crossValidateAndTest(name, clf, params, trainTest, scaler=None):
     
     print("Best params: " + str(cv_clf.best_params_))
     
-    table_output = 'train_score {:.4f} & train_time {:.4f} & test_score{:.4f} & test_time {:.4f}'.format(train_score, train_time, test_score, test_time)
+    table_output = '{:.4f} & {:.4f} & {:.4f} & {:.4f}'.format(train_score, train_time, test_score, test_time)
     
     
+    
+#     score = optimized_clf.score(X_test, y_test)
         
     all_sizes = train_sizes_base 
+#     base_curve = learning_curve(base_estimator, X_train, y_train, cv=None, train_sizes=all_sizes)
 
-    cv_curve = learning_curve(cv_estimator, X_train, y_train, cv=cross_validations, train_sizes=all_sizes)
+    if plot:
+        cv_curve = learning_curve(cv_estimator, X_train, y_train, cv=cross_validations, train_sizes=all_sizes)
 
-
-    plot = plot_learning_curve(name, cv_curve) 
+    #     plot = plot_learning_curve(name, base_curve, cv_curve)
+        plot = plot_learning_curve(name, cv_curve) 
 
     
     return (cv_estimator, cv_clf, table_output)
+
+print("Finished")
+
+
+# In[ ]:
+
+
+# Decision Tree
+params = { 'criterion':['gini','entropy'] }
+
+for i in [1, 3, 6, 10, 15, 20, 25, 35, 50]: 
+    clf = tree.DecisionTreeClassifier(max_depth=i, class_weight='balanced', splitter='best', min_samples_leaf=1)
+    output, output_clf, table_output = crossValidateAndTest('Decision Tree: ' + str(i), clf, params, trainTest)
+    tree_size = output.tree_.node_count
+    print('{} & {} & {} & '.format(i, output_clf.best_params_['criterion'], tree_size) + table_output + ' \\\\ \\hline') 
+    
+    print()
+#     clf = clf.fit(X_train, y_train)
+
+#     y_predict = clf.predict(X_test)
+#     scores = cross_val_score(clf, X, y)
+#     print(str(i) + ': ' + str(accuracy_score(y_test, y_predict)) + '   |   ' + str(scores.mean()))
+    if i == 7:
+        dot_data = tree.export_graphviz(output, out_file=None, 
+                             feature_names=df_x,  
+                             class_names=classifed_names,  
+                             filled=True, rounded=True,  
+                             special_characters=True)  
+        graph = graphviz.Source(dot_data).view()
+
+
+# In[ ]:
+
+
+from sklearn.ensemble import AdaBoostClassifier
+estimators = [1, 3, 5, 15, 50, 100, 150]
+learning_rate = [.1, 1, 10]
+
+for i in [1, 3, 5, 10, 15, 20]: 
+    clf_base = tree.DecisionTreeClassifier(max_depth=i, criterion='gini', splitter='best')
+    clf = AdaBoostClassifier(base_estimator=clf_base)
+    output, output_clf, table_output = crossValidateAndTest('Adaboost: ' + str(i), clf, {'n_estimators': estimators, 'learning_rate': learning_rate}, trainTest)
+    tree_count = len(output)
+    print('{} & {} & {} & '.format(i, output_clf.best_params_['learning_rate'], output_clf.best_params_['n_estimators']) + table_output + ' \\\\ \\hline') 
+
+
+# In[ ]:
+
 
 from sklearn.neural_network import MLPClassifier
 from sklearn.preprocessing import StandardScaler  
@@ -146,18 +196,18 @@ params = {}
 
 print("Starting neural networks")
 for alpha in alphas:
-    for i in range(len(learning_rate_inits)):
+    for learning_rate_init in learning_rate_inits:
         clf = MLPClassifier(solver='adam', max_iter=2000, random_state=7, batch_size='auto')
         plot = True
-        output, output_clf, table_output = crossValidateAndTest('Adam NN: ' + str(alpha), clf, params, trainTest, StandardScaler())
+        output, output_clf, table_output = crossValidateAndTest('Adam NN: ' + str(alpha) + '/' + str(learning_rate_init), clf, params, trainTest, StandardScaler(), plot)
         print(str(output.n_iter_))
-        print('{} & {} & '.format(alpha, learning_rate_inits[i]) + table_output + ' \\\\ \\hline') 
+        print('{} & {} & '.format(alpha, learning_rate_init) + table_output + ' \\\\ \\hline') 
         
         clf = MLPClassifier(solver='sgd', max_iter=2000, random_state=7, batch_size='auto')
         plot = True
-        output, output_clf, table_output = crossValidateAndTest('SGD NN: ' + str(alpha), clf, params, trainTest, StandardScaler())
+        output, output_clf, table_output = crossValidateAndTest('SGD NN: ' + str(alpha) + '/' + str(learning_rate_init), clf, params, trainTest, StandardScaler(), plot)
         print(str(output.n_iter_))
-        print('{} & {} & '.format(alpha, learning_rate_inits[i]) + table_output + ' \\\\ \\hline') 
+        print('{} & {} & '.format(alpha, learning_rate_init) + table_output + ' \\\\ \\hline') 
 
 
 
@@ -251,3 +301,44 @@ plt.xlabel("# Iterations")
 plt.ylabel("Loss")
 fig.legend(ax.get_lines(), labels, ncol=3, loc="upper center")
 plt.show()
+
+
+# In[ ]:
+
+
+from sklearn import svm
+from sklearn.preprocessing import StandardScaler  
+
+kernels = ['rbf', 'poly']
+gammas = [0.01, .05, 1.0, 2.0]
+for kernel in kernels:
+    for gamma in gammas:
+        clf_1 = svm.SVC(kernel=kernel, max_iter=30000, gamma=gamma)
+        output, output_clf, table_output = crossValidateAndTest('SVM ' + kernel + ' - ' + str(gamma), clf_1, {}, trainTest, StandardScaler())
+        print('{} & {} & '.format(kernel, gamma) + table_output + ' \\\\ \\hline') 
+
+
+# In[ ]:
+
+
+from sklearn import neighbors
+
+print('Running knn')
+weights = ['uniform', 'distance']
+k_vals = [1, 2, 3, 4, 5, 10, 15, 20, 30, 50]
+
+outputs = []
+for weight in weights:
+    for k in k_vals:
+        # we create an instance of Neighbours Classifier and fit the data.
+        clf = neighbors.KNeighborsClassifier(k, weights=weight)
+        output, output_clf, table_output = crossValidateAndTest('KNN - ' + weight + ': ' + str(k), clf, {}, trainTest)
+        print('{} & {} & '.format(weight, k) + table_output + ' \\\\ \\hline') 
+        outputs.append('{} & {} & '.format(weight, k) + table_output + ' \\\\ \\hline')
+        print()
+
+
+for line in outputs:
+    print(line)
+
+
